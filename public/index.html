@@ -13,31 +13,48 @@
 
     <style>
         body { background-color: #121212; color: #e0e0e0; font-family: 'Segoe UI', monospace; }
-        .card { background-color: #1e1e1e; border: 1px solid #333; }
-        .status-dot { height: 12px; width: 12px; background-color: #555; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        .card { background-color: #1e1e1e; border: 1px solid #333; margin-bottom: 20px; }
+        .status-dot { height: 12px; width: 12px; border-radius: 50%; display: inline-block; margin-right: 5px; background-color: #555; }
         .online { background-color: #00ff00; box-shadow: 0 0 10px #00ff00; }
         .offline { background-color: #ff0000; }
-        .sim { background-color: #ffcc00; }
         
+        /* Log Window */
         #log-window {
-            height: 300px;
+            height: 200px; /* Made smaller to fit controls */
             overflow-y: auto;
             background-color: #000;
             color: #00ff00;
             font-family: 'Consolas', monospace;
-            font-size: 0.9em;
+            font-size: 0.85em;
             padding: 10px;
             border: 1px solid #333;
         }
         .log-entry { margin-bottom: 2px; border-bottom: 1px solid #222; }
         .log-time { color: #666; margin-right: 10px; }
+
+        /* Controls */
+        input, select { background: #2b2b2b; color: #fff; border: 1px solid #444; }
+        input:focus, select:focus { background: #333; color: #fff; border-color: #00ff00; outline: none; }
+        .btn-success { background-color: #006622; border: none; }
+        .btn-success:hover { background-color: #00ff00; color: #000; }
+
+        /* Sensor Simulator Grid */
+        .sensor-btn {
+            width: 100%;
+            padding-top: 100%; /* Aspect Ratio 1:1 */
+            background: #333;
+            border: 1px solid #444;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+        .sensor-active { background-color: #00ff00 !important; box-shadow: 0 0 8px #00ff00; }
     </style>
 </head>
 <body>
 
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>🤖 Seize the Move </h2>
+        <h2>🤖 Seize the Move</h2>
         <div>
             <span class="badge bg-dark border border-secondary p-2"><span id="lichess-status" class="status-dot"></span> Lichess API</span>
             <span class="badge bg-dark border border-secondary p-2"><span id="arduino-status" class="status-dot"></span> Arduino</span>
@@ -56,26 +73,77 @@
         </div>
 
         <div class="col-md-6">
-            <div class="card p-3 h-100">
+            
+            <div class="card p-3">
+                <h5 class="border-bottom pb-2 mb-3">🎮 Mission Control</h5>
+                
+                <div class="mb-3">
+                    <label class="form-label text-muted small">MATCHMAKING</label>
+                    <div class="input-group">
+                        <input type="text" id="username" class="form-control form-control-sm" placeholder="Username (e.g. stockfish)">
+                        <select id="timeControl" class="form-select form-select-sm" style="max-width: 100px;">
+                            <option value="600">10m</option>
+                            <option value="300">5m</option>
+                            <option value="180">3m</option>
+                        </select>
+                        <button class="btn btn-success btn-sm" onclick="sendChallenge()">Challenge</button>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label text-muted small">EMERGENCY OVERRIDE</label>
+                    <div class="input-group">
+                        <input type="text" id="manualMove" class="form-control form-control-sm" placeholder="Move (e.g. e2e4)">
+                        <button class="btn btn-warning btn-sm" onclick="forceMove()">Force</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="form-label text-muted small">VIRTUAL SENSORS (Click to Toggle)</label>
+                    <div id="sensor-grid" style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px;">
+                        </div>
+                </div>
+            </div>
+
+            <div class="card p-3">
                 <h5>SYSTEM LOGS</h5>
                 <div id="log-window">
                     <div class="log-entry">System Initialized... Waiting for connection.</div>
                 </div>
             </div>
+
         </div>
     </div>
 </div>
 
 <script>
     const socket = io();
-    // Initialize Visual Board
+    
+    // --- 1. INITIALIZE CHESSBOARD ---
     const board = Chessboard('myBoard', {
-    position: 'start',
-    // Tell it to fetch images from the web
-    pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
-});
+        position: 'start',
+        pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+    });
 
-    // 1. LISTEN FOR LOGS
+    // --- 2. BUILD SENSOR GRID ---
+    const sensorGridEl = document.getElementById('sensor-grid');
+    const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+    
+    for (let r = 8; r >= 1; r--) {
+        for (let f = 0; f < 8; f++) {
+            const sq = files[f] + r;
+            const btn = document.createElement('div');
+            btn.className = 'sensor-btn';
+            btn.id = `sensor-${sq}`;
+            btn.title = sq;
+            btn.onclick = () => toggleSensor(sq);
+            sensorGridEl.appendChild(btn);
+        }
+    }
+
+    // --- 3. SOCKET LISTENERS ---
+    
+    // Logs
     socket.on('log', (data) => {
         const logWin = document.getElementById('log-window');
         const entry = document.createElement('div');
@@ -83,25 +151,72 @@
         const time = new Date().toLocaleTimeString();
         entry.innerHTML = `<span class="log-time">[${time}]</span> ${data.msg}`;
         logWin.appendChild(entry);
-        logWin.scrollTop = logWin.scrollHeight; // Auto scroll
+        logWin.scrollTop = logWin.scrollHeight;
     });
 
-    // 2. LISTEN FOR STATUS UPDATES
+    // Status Dots
     socket.on('status', (data) => {
         if(data.lichess) updateStatus('lichess-status', data.lichess);
         if(data.arduino) updateStatus('arduino-status', data.arduino);
     });
 
-    // 3. LISTEN FOR BOARD MOVES
+    // Board Moves
     socket.on('boardUpdate', (data) => {
-        board.position(data.fen); // Update visual board
+        board.position(data.fen);
         document.getElementById('game-info').innerText = `Game ID: ${data.id}`;
-        document.getElementById('player-names').innerText = `${data.white} vs ${data.black}`;
+        if(data.white) document.getElementById('player-names').innerText = `${data.white} vs ${data.black}`;
     });
 
+    // Sensor Visual Updates
+    socket.on('matrix_update', (data) => {
+        // data can be array ['e2'] or object {square:'e2', status:'1'}
+        // Handle both for compatibility
+        let sq, isActive;
+        if(Array.isArray(data)) { sq = data[0]; isActive = true; } 
+        else { sq = data.square; isActive = (data.status === '1'); }
+
+        const el = document.getElementById(`sensor-${sq}`);
+        if(el) {
+            if(isActive) el.classList.add('sensor-active');
+            else el.classList.remove('sensor-active');
+        }
+    });
+
+    // --- 4. ACTION FUNCTIONS ---
+
     function updateStatus(id, state) {
-        const el = document.getElementById(id);
-        el.className = 'status-dot ' + state; 
+        document.getElementById(id).className = 'status-dot ' + state; 
+    }
+
+    function sendChallenge() {
+        const user = document.getElementById('username').value || 'stockfish';
+        const time = document.getElementById('timeControl').value;
+        fetch('/api/challenge', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ username: user, time: time })
+        });
+    }
+
+    function forceMove() {
+        const move = document.getElementById('manualMove').value;
+        if(move) socket.emit('manual_move', move);
+        document.getElementById('manualMove').value = '';
+    }
+
+    // Virtual Sensor Logic
+    let virtualState = {};
+    function toggleSensor(square) {
+        const isPresent = !virtualState[square];
+        virtualState[square] = isPresent;
+        
+        // Optimistic UI update
+        const el = document.getElementById(`sensor-${square}`);
+        if(isPresent) el.classList.add('sensor-active');
+        else el.classList.remove('sensor-active');
+
+        // Send to Server
+        socket.emit('simulate_sensor', { square, status: isPresent ? "1" : "0" });
     }
 </script>
 

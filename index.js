@@ -6,13 +6,15 @@ const axios = require('axios');
 const { SerialPort } = require('serialport');
 const { ReadlineParser } = require('@serialport/parser-readline');
 const { Chess } = require('chess.js');
+const path = require('path');
 
 // --- SETUP SERVER ---
-// --- SETUP SERVER ---
-const path = require('path'); // Add this line
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
+
+// [NEW] Middleware for JSON (Required for Challenge API)
+app.use(express.json());
 
 // FORCE CORRECT PATH
 const publicPath = path.join(__dirname, 'public');
@@ -23,6 +25,7 @@ app.use(express.static(publicPath));
 app.get('/', (req, res) => {
     res.send(`<h1>Error: Frontend not found</h1><p>Expected file at: ${publicPath}/index.html</p>`);
 });
+
 // --- CONFIGURATION ---
 const TOKEN = process.env.LICHESS_TOKEN;
 const PORT_NAME = process.env.SERIAL_PORT;
@@ -41,6 +44,7 @@ const RIGHT_GUTTER_X = BOARD_WIDTH_STEPS + 50;
 const gameLogic = new Chess(); 
 let arduinoPort = null;
 let currentGameId = null;
+let pendingMove = { from: null, to: null }; // [NEW] For detecting physical moves
 
 // --- HELPER: SEND LOGS TO UI ---
 function systemLog(message) {
@@ -49,7 +53,7 @@ function systemLog(message) {
 }
 
 // =========================================================
-//  MODULE 1: ARDUINO COMMUNICATION
+//  MODULE 1: ARDUINO COMMUNICATION (UPDATED)
 // =========================================================
 function connectArduino() {
     systemLog(`🔌 FYP2026: Connecting to Arduino on ${PORT_NAME}...`);
@@ -62,7 +66,27 @@ function connectArduino() {
             io.emit('status', { arduino: 'online' });
         });
         
-        parser.on('data', (data) => systemLog(`🤖 ROBOT: ${data.toString().trim()}`));
+        // [UPDATED] Listen for MATRIX events from hardware
+        parser.on('data', (data) => {
+            const line = data.toString().trim();
+            
+            // 1. SENSOR UPDATE (e.g., "MATRIX:e2:0")
+            if (line.startsWith('MATRIX:')) {
+                const parts = line.split(':');
+                const square = parts[1].toLowerCase();
+                const status = parts[2]; // "1"=Place, "0"=Lift
+                
+                // Update UI Visuals
+                io.emit('matrix_update', { square, status });
+                
+                // Run Logic
+                detectChessMove(square, status);
+            } 
+            // 2. ROBOT STATUS
+            else {
+                systemLog(`🤖 ROBOT: ${line}`);
+            }
+        });
         
         arduinoPort.on('error', (err) => {
             systemLog(`⚠️ Arduino Error: ${err.message}`);
@@ -72,6 +96,56 @@ function connectArduino() {
     } catch (err) {
         systemLog("⚠️ Arduino not found. RUNNING IN SIMULATION MODE.");
         io.emit('status', { arduino: 'sim' });
+    }
+}
+
+// =========================================================
+//  [NEW] MODULE 1.5: SENSOR LOGIC (THE DETECTIVE)
+// =========================================================
+function detectChessMove(square, status) {
+    // A. PIECE LIFTED (Source)
+    if (status === "0") {
+        const piece = gameLogic.get(square);
+        // Only if piece exists and belongs to active player
+        if (piece && piece.color === gameLogic.turn()) {
+            pendingMove.from = square;
+            systemLog(`🔍 Source Detected: ${square}`);
+        }
+    }
+
+    // B. PIECE PLACED (Destination)
+    else if (status === "1") {
+        if (pendingMove.from) {
+            pendingMove.to = square;
+            
+            // Validate Logic Locally First
+            const tempGame = new Chess(gameLogic.fen());
+            try {
+                const moveResult = tempGame.move({ from: pendingMove.from, to: pendingMove.to, promotion: 'q' });
+                
+                if (moveResult) {
+                    systemLog(`✅ Valid Move: ${pendingMove.from}${pendingMove.to}`);
+                    sendMoveToLichess(moveResult.lan);
+                    pendingMove = { from: null, to: null }; // Reset
+                } else {
+                    systemLog(`❌ Illegal: ${pendingMove.from} -> ${pendingMove.to}`);
+                }
+            } catch (e) { }
+        }
+    }
+}
+
+async function sendMoveToLichess(moveLan) {
+    if (!currentGameId) return;
+    try {
+        await axios.post(
+            `https://lichess.org/api/board/game/${currentGameId}/move/${moveLan}`,
+            {},
+            { headers: { Authorization: `Bearer ${TOKEN}` } }
+        );
+        systemLog("🚀 Sent to Lichess!");
+    } catch (err) {
+        systemLog(`❌ Lichess Rejected: ${err.message}`);
     }
 }
 
@@ -130,7 +204,6 @@ async function streamGameMoves(gameId) {
                         const moves = update.state.moves.split(' ');
                         moves.forEach(m => { if(m) gameLogic.move(m); });
                         
-                        // Update UI Board
                         io.emit('boardUpdate', { 
                             fen: gameLogic.fen(), 
                             id: gameId, 
@@ -209,11 +282,60 @@ function sendToRobot(moveResult) {
 function logCommand(cmd) {
     if (arduinoPort && arduinoPort.isOpen) {
         arduinoPort.write(cmd + '\n');
-    } else {
-        // Just log to simulation
-        // systemLog(`   (SIM) -> ${cmd}`); // Optional: Comment out to keep logs clean
     }
 }
+
+// =========================================================
+//  [NEW] MODULE 4: API & DASHBOARD CONTROLS
+// =========================================================
+
+// A. Challenge API
+app.post('/api/challenge', async (req, res) => {
+    const { username, time } = req.body;
+    systemLog(`🔥 Sending Challenge to: ${username}`);
+    
+    try {
+        const response = await axios.post(
+            `https://lichess.org/api/challenge/${username}`, 
+            { 
+                clock: { limit: parseInt(time), increment: 0 },
+                color: 'random',
+                variant: 'standard'
+            },
+            { headers: { Authorization: `Bearer ${TOKEN}` } }
+        );
+        systemLog(`✅ Challenge Sent! ID: ${response.data.id}`);
+        res.json({ success: true, gameId: response.data.id });
+    } catch (error) {
+        const errData = error.response?.data?.error || error.message;
+        systemLog(`❌ Challenge Failed: ${errData}`);
+        res.json({ success: false, error: errData });
+    }
+});
+
+// B. Socket Listeners for Dashboard
+io.on('connection', (socket) => {
+    // 1. Manual Override
+    socket.on('manual_move', async (moveString) => {
+        if (!currentGameId) { systemLog("⚠️ No active game!"); return; }
+        systemLog(`⚠️ FORCE MOVE: ${moveString}`);
+        try {
+            await axios.post(
+                `https://lichess.org/api/board/game/${currentGameId}/move/${moveString}`,
+                {},
+                { headers: { Authorization: `Bearer ${TOKEN}` } }
+            );
+        } catch (err) { systemLog(`❌ Override Error: ${err.message}`); }
+    });
+
+    // 2. Sensor Simulator
+    socket.on('simulate_sensor', (data) => {
+        const { square, status } = data;
+        systemLog(`🖱️ VIRTUAL SENSOR: ${square} -> ${status==="1"?"ON":"OFF"}`);
+        io.emit('matrix_update', { square, status }); // Update Visuals
+        detectChessMove(square, status); // Run Logic
+    });
+});
 
 // START SERVER
 server.listen(3000, () => {
