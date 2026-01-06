@@ -1,0 +1,172 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lato:wght@300;400;700&display=swap');
+
+:root {
+    --bg-color: #1a1a1a;
+    --panel-bg: #262626;
+    --text-primary: #e0d6c2;
+    --text-muted: #8c8c8c;
+    --accent-gold: #c5a059;
+    --accent-red: #8a3324;
+    --border: #3d3d3d;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+    font-family: 'Lato', sans-serif;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+h1, h2, h3, h4, .brand-font {
+    font-family: 'Cinzel', serif;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+/* --- HEADER --- */
+.header {
+    background: var(--panel-bg);
+    border-bottom: 1px solid var(--accent-gold);
+    padding: 10px 25px;
+    height: 60px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+.brand-title { color: var(--text-primary); font-size: 1.2rem; margin: 0; }
+.brand-accent { color: var(--accent-gold); }
+
+/* --- LAYOUT --- */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 20px;
+    padding: 20px;
+    flex-grow: 1;
+    overflow: hidden;
+}
+
+.panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    box-shadow: inset 0 0 30px rgba(0,0,0,0.8);
+    overflow: hidden;
+}
+.panel::before {
+    content: ''; position: absolute; top: 4px; left: 4px; right: 4px; bottom: 4px;
+    border: 1px solid rgba(197, 160, 89, 0.2); pointer-events: none;
+}
+
+/* --- BOARD --- */
+.board-container {
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    max-height: 70vh;
+}
+#myBoard { width: 100%; max-width: 55vh; }
+
+/* --- CLOCKS --- */
+.clock-container { display: flex; justify-content: center; gap: 20px; margin-bottom: 10px; }
+.clock-box {
+    background: #141414; color: var(--text-muted); padding: 5px 15px;
+    font-family: 'Cinzel', serif; font-size: 1.2rem; border: 1px solid var(--border);
+    min-width: 80px; text-align: center;
+}
+.clock-active { border-color: var(--accent-gold); color: var(--accent-gold); box-shadow: 0 0 10px rgba(197, 160, 89, 0.2); }
+
+/* --- CONTROLS --- */
+.control-group { margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+.control-label {
+    font-family: 'Cinzel', serif; font-size: 0.75rem; color: var(--accent-gold); margin-bottom: 8px; display: block;
+}
+
+/* --- NUCLEAR VISIBILITY FIX FOR INPUTS & BUTTONS --- */
+
+/* 1. INPUTS: Force Black Background, White Text */
+input, select {
+    background-color: #000000 !important;
+    border: 1px solid #555 !important;
+    color: #ffffff !important;  /* Bright White */
+    font-family: 'Lato', sans-serif;
+    padding: 8px !important;
+    font-size: 0.9rem !important;
+    border-radius: 4px !important;
+    opacity: 1 !important;
+}
+
+/* 2. PLACEHOLDER: Force Light Grey */
+input::placeholder {
+    color: #aaaaaa !important;
+    opacity: 1 !important;
+}
+
+/* 3. BUTTONS: Solid Gold Background (Impossible to miss) */
+.btn-gold {
+    background-color: #c5a059 !important;  /* Solid Gold */
+    color: #000000 !important;             /* Black Text */
+    border: 1px solid #c5a059 !important;
+    font-family: 'Cinzel', serif;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    opacity: 1 !important;
+    cursor: pointer;
+    min-width: 80px;
+    text-shadow: none !important;
+}
+
+.btn-gold:hover {
+    background-color: #e0b060 !important; /* Lighter Gold on Hover */
+    color: #000 !important;
+    box-shadow: 0 0 10px rgba(197, 160, 89, 0.8);
+}
+
+.btn-danger-custom {
+    background-color: rgba(138, 51, 36, 0.3) !important;
+    border: 1px solid var(--accent-red) !important;
+    color: var(--accent-red) !important;
+    font-family: 'Cinzel', serif;
+    font-weight: 700;
+    padding: 6px 12px;
+}
+
+/* --- LOGS --- */
+#log-window {
+    flex-grow: 1; overflow-y: auto; font-family: 'Courier New', monospace;
+    background: #111; padding: 10px; border: 1px solid var(--border);
+    color: var(--text-muted); font-size: 0.8rem; min-height: 100px;
+}
+.log-entry { margin-bottom: 4px; border-left: 2px solid var(--border); padding-left: 8px; }
+
+/* --- STATUS DOTS --- */
+.status-badge {
+    font-size: 0.65rem; padding: 4px 8px; border: 1px solid var(--border);
+    color: var(--text-muted); margin-left: 10px;
+}
+.dot { height: 6px; width: 6px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.dot.online { background: var(--accent-gold); box-shadow: 0 0 5px var(--accent-gold); }
+.dot.offline { background: var(--accent-red); }
+
+/* --- NOTIFICATIONS --- */
+#game-alert {
+    display: none; background: rgba(197, 160, 89, 0.95); border: 1px solid var(--accent-gold);
+    padding: 15px; text-align: center; margin-bottom: 10px; color: #1a1a1a;
+    font-family: 'Cinzel', serif; font-weight: 700; position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 1000; box-shadow: 0 0 20px rgba(0,0,0,0.8); min-width: 300px; border-radius: 4px;
+}
+
+/* --- SENSOR GRID --- */
+.sensor-wrapper { position: relative; width: fit-content
