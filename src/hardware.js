@@ -15,7 +15,7 @@ class HardwareBridge extends EventEmitter {
         console.log(`🔌 [Hardware] Attempting connection on ${this.portPath}...`);
         
         try {
-            // Initialize connection to ESP32
+            // Initialize connection to Arduino
             this.port = new SerialPort({ path: this.portPath, baudRate: this.baudRate });
             const parser = this.port.pipe(new ReadlineParser({ delimiter: '\n' }));
 
@@ -29,7 +29,6 @@ class HardwareBridge extends EventEmitter {
                 const line = data.toString().trim();
                 
                 // We only care about MATRIX events (Sensor data)
-                // Format expected: MATRIX:e2:1 (Square:Status)
                 if (line.startsWith('MATRIX:')) {
                     const parts = line.split(':');
                     this.emit('sensor', { 
@@ -37,7 +36,8 @@ class HardwareBridge extends EventEmitter {
                         status: parts[2] // "1" = Place, "0" = Lift
                     });
                 } else {
-                    // Log other messages (like debug info from ESP32)
+                    // Log other messages (like debug info from Arduino)
+                    console.log(`[ARDUINO SAYS]: ${line}`);
                     this.emit('log', `🤖 Robot: ${line}`);
                 }
             });
@@ -51,6 +51,15 @@ class HardwareBridge extends EventEmitter {
             // Fallback for when the board isn't plugged in
             console.warn('⚠️ [Hardware] Port not found. Starting in SIMULATION MODE.');
             this.emit('status', 'sim');
+        }
+    }
+
+    // Explicit write function used by index.js
+    write(data) {
+        if (this.port && this.port.isOpen) {
+            this.port.write(data);
+        } else {
+            console.warn("⚠️ [Hardware] Cannot write. Port is closed or not initialized.");
         }
     }
 
